@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="ja">
+    <head>
+        <meta charset="utf-8">
+        <title>Preparing Shift App</title>
+    </head>
+    <body>
+      <h1>{{.Month}}月</h1>
+      <h3>シフトリスト</h3>
+      <table border="1">
+        <tr>
+          <th></th>
+          {{ range .Day }}
+          <th>{{ . }}</th>
+          {{ end }}
+        </tr>
+      {{ range .DataList }}
+      <tr>
+        <td>{{ .Name }}</td>
+        {{ range .Day}}
+          {{ if eq .Shift 2}}
+          <td>○</td>
+          {{else if eq .Shift 1}}
+          <td>×</td>
+          {{else}}
+          <td>未</td>
+          {{ end }}
+        {{ end }}
+      </tr>
+    {{ end }}
+    </table>
+
+    <h3>メニューに戻る方はこちら</h3>
+    <a href="http://localhost:8080/owner">Owner Menu</a>
+    </body>
+</html>

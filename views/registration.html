@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="ja">
+    <head>
+        <meta charset="utf-8">
+        <title>Preparing Shift App</title>
+    </head>
+    <body>
+      <h3>従業員管理</h3>
+      <p>シフト提出に使用するので、登録したユーザー名とパスワードは店舗idと併せて各ユーザーにお知らせください</p>
+      <p>注）同じ名前の従業員を複数登録することはできません。</p>
+      <form action="http://localhost:8080/owner/registration" method="post" enctype="application/x-www-form-urlencoded">
+        <input type="radio" name="_method" value="POST" checked>従業員情報追加
+        <input type="radio" name="_method" value="DELETE">従業員情報削除
+        <p>ユーザー名</p>
+        <input type="text" name="name"/>
+        <p>パスワード</p>
+        <input type="text" name="pass"/>
+        <input type="submit" value="registration"/>
+      </form>
+      <br>
+      <h3>従業員リスト</h3>
+      <table border="1" width="300">
+        <tr>
+          <th>従業員名</th>
+          <th>パスワード</th>
+        </tr>
+        {{ range .List }}
+        <tr>
+          <td>{{ .Name }}</td>
+          <td>{{ .Password }}</td>          
+        </tr>
+        {{ end }}
+      </table>
+
+      <h3>メニューに戻る方はこちら</h3>
+      <a href="http://localhost:8080/owner">Owner Menu</a>
+    </body>
+</html>

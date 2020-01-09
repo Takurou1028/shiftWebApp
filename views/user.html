@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="ja">
+    <head>
+        <meta charset="utf-8">
+        <title>Preparing Shift App</title>
+        <style type="text/css">
+          .shift-form{
+            float: left;
+          }
+          .submited-form{
+            float: left;
+          }
+          .logout{
+            clear: both;
+          }
+        </style>
+    </head>
+    <body>
+      <h1>{{.Month}}月</h1>
+      <div class="shift-form">
+        <h3>シフト提出 or 更新</h3>
+        <p>シフト欄にチェックしsubmitを押してください</p>
+        <form action="http://localhost:8080/user" method="post" enctype="application/x-www-form-urlencoded">
+        <table border="1" width="300">
+          <tr>
+            <th>日付</th>
+            <th>シフト</th>
+          </tr>
+          {{ range .Day }}
+          <tr>
+            <td>{{ .Day }}</td>
+            <td>
+              <input type="radio" name="day{{.Day}}" value="2">○
+              <input type="radio" name="day{{.Day}}" value="1" checked>×
+            </td>
+          </tr>
+          {{ end }}
+        </table>
+        <input type="submit" value="submit"/>
+      </form>
+      </div>
+
+      <div class="submited-form">
+        <h3>提出済みシフト</h3>
+        <br>
+        <br>
+        <table border="1" width="200">
+          <tr>
+            <th>日付</th>
+            <th>シフト</th>
+          </tr>
+        {{ range .Day }}
+        <tr>
+          <td>{{ .Day }}</td>
+          {{ if eq .Shift 2}}
+          <td>○</td>
+          {{else if eq .Shift 1}}
+          <td>×</td>
+          {{else}}
+          <td>未提出</td>
+          {{ end }}
+        </tr>
+        {{ end }}
+      </table>
+      </div>
+
+      <div class="logout">
+        <h3>ログアウト</h3>
+        <a href="http://localhost:8080/logout_">Logout</a>
+      </div>
+    </body>
+</html>

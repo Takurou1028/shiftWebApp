@@ -4,7 +4,6 @@ import(
 	"database/sql"
 	"fmt"
 	"log"
-	"strconv"
 	"time"
 
 	_ "github.com/mattn/go-sqlite3"
@@ -14,17 +13,17 @@ var DbConnection *sql.DB
 
 //店舗構造体
 type Shop struct {
-	ID			int    `form:"id"`
+	ID			int    `form:"shopid"`
 	OwnerName	string `form:"owner_name"`
 	Password	string `form:"pass"`
 }
 
 //shoplistDB作成
-func CreateShopListDB() error{
-	DbConnection, _ := sql.Open("sqlite3", "DB/shoplist.sql")
+func CreateOwnerDB() error{
+	DbConnection, _ := sql.Open("sqlite3", "DB/owner.sql")
 	defer DbConnection.Close()
-	cmd := `CREATE TABLE IF NOT EXISTS shoplist(
-		id			INT,
+	cmd := `CREATE TABLE IF NOT EXISTS owner(
+		shopid			INT		PRIMARY KEY,
 		owner_name	STRING,
 		pass		STRING);`
 	_, err := DbConnection.Exec(cmd)
@@ -33,17 +32,17 @@ func CreateShopListDB() error{
 
 //店舗をDBに新規登録（店舗リスト）
 func (shop *Shop) SignupShop() error {
-	DbConnection, _ := sql.Open("sqlite3", "DB/shoplist.sql")
+	DbConnection, _ := sql.Open("sqlite3", "DB/owner.sql")
 	defer DbConnection.Close()
 	shop.GetShopID(DbConnection)	
-	cmd := "INSERT INTO shoplist (id, owner_name, pass) VALUES (?, ?, ?);"
+	cmd := "INSERT INTO owner (shopid, owner_name, pass) VALUES (?, ?, ?);"
 	_, err := DbConnection.Exec(cmd, shop.ID, shop.OwnerName, shop.Password)
 	return err
 }
 
 //ShopId発行(
 func (shop *Shop) GetShopID(DbConnection *sql.DB) error {
-	cmd := "SELECT id FROM shoplist ORDER BY id DESC LIMIT 1;"
+	cmd := "SELECT shopid FROM owner ORDER BY shopid DESC LIMIT 1;"
 	row := DbConnection.QueryRow(cmd)
 	var dummyID int
 	err := row.Scan(&dummyID)
@@ -56,12 +55,12 @@ func (shop *Shop) GetShopID(DbConnection *sql.DB) error {
 	return err
 }
 
-//idをキーにしてshoplistDBからオーナー名、パスを返す
-func FindOwner(id int) (string, string, error){
-	DbConnection, _ := sql.Open("sqlite3", "DB/shoplist.sql")
+//shopidをキーにしてownerDBからオーナー名、パスを返す
+func FindOwner(shopID int) (string, string, error){
+	DbConnection, _ := sql.Open("sqlite3", "DB/owner.sql")
 	defer DbConnection.Close()
-	cmd := "SELECT owner_name, pass FROM shoplist WHERE id = ?;"
-	row := DbConnection.QueryRow(cmd, id)
+	cmd := "SELECT owner_name, pass FROM owner WHERE shopid = ?;"
+	row := DbConnection.QueryRow(cmd, shopID)
 	var ownerName	string
 	var password	string
 	err := row.Scan(&ownerName, &password)
@@ -71,71 +70,81 @@ func FindOwner(id int) (string, string, error){
 //利用者構造体
 type User struct{
 	Position	int		`form:"position"`  //0:オーナー, 1:被雇用者
-	ShopID		int		`form:"id"`
+	ShopID		int		`form:"shopid"`
 	Name		string	`form:"name"`
 	Password	string	`form:"pass"`
+	ID			int		`form:"userid"`
 }
 
-//shopinfoDB作成（被雇用者リスト）
-func CreateShopInfoDB(id int) error {
-	DbConnection, _ := sql.Open("sqlite3", "DB/shopinfo.sql")
+//userlistDB作成（被雇用者リスト）
+func CreateUserListDB() error {
+	DbConnection, _ := sql.Open("sqlite3", "DB/userlist.sql")
 	defer DbConnection.Close()
-	cmd := fmt.Sprintf("CREATE TABLE IF NOT EXISTS %s (name STRING, pass STRING);", "shopID_"+strconv.Itoa(id))
+	cmd := fmt.Sprintf(`CREATE TABLE IF NOT EXISTS %s 
+			(userid INT PRIMARY KEY, name STRING, pass STRING, shopid INT);`,
+			 "userlist")
 	_, err := DbConnection.Exec(cmd)
 	return err
 }
 
-//idをキーにしてshopinfoDBから被雇用者名、パスを返す/
-func FindUser(id int, name string) (string, string, error){
-	DbConnection, _ := sql.Open("sqlite3", "DB/shopinfo.sql")
+//UserId発行(
+func (user *User) GetUserID(DbConnection *sql.DB) error {
+	cmd := "SELECT userid FROM userlist ORDER BY userid DESC LIMIT 1;"
+	row := DbConnection.QueryRow(cmd)
+	var dummyID int
+	err := row.Scan(&dummyID)
+	if err == sql.ErrNoRows {
+		user.ID = 1
+	}
+	if err == nil{
+		user.ID = dummyID + 1
+	}
+	return err
+}
+
+//useridをキーにしてshopinfoDBから被雇用者名、パスを返す/
+func FindUser(userID int) (string, string, error){
+	DbConnection, _ := sql.Open("sqlite3", "DB/userlist.sql")
 	defer DbConnection.Close()
-	cmd := fmt.Sprintf("SELECT name, pass FROM %s WHERE name = ?;", "shopID_" + strconv.Itoa(id))
-	row := DbConnection.QueryRow(cmd, name)
+	cmd := fmt.Sprintf("SELECT name, pass FROM %s WHERE userid = ?;", "userlist")
+	row := DbConnection.QueryRow(cmd, userID)
 	var userName	string
 	var password	string
 	err := row.Scan(&userName, &password)
 	return userName, password, err
 }
 
-//従業員名の重複確認(重複あればtrue、なければfalse)
-func ConfirmName(id int, name string) bool{
-	DbConnection, _ := sql.Open("sqlite3", "DB/shopinfo.sql")
-	defer DbConnection.Close()
-	cmd := fmt.Sprintf("SELECT name FROM %s WHERE name = ?;", "shopID_" + strconv.Itoa(id))
-	row := DbConnection.QueryRow(cmd, name)
-	err := row.Scan(&name)
-	if err != nil{
-		log.Println(err)
-		return false
-	}
-	return true
-}
-
 //shopinfoDB従業員登録
 func (user *User) SignupUser() error {
-	DbConnection, _ := sql.Open("sqlite3", "DB/shopinfo.sql")
+	DbConnection, _ := sql.Open("sqlite3", "DB/userlist.sql")
 	defer DbConnection.Close()
-	cmd := fmt.Sprintf("INSERT INTO %s (name, pass) VALUES (?, ?);", "shopID_"+strconv.Itoa(user.ShopID))
-	_, err := DbConnection.Exec(cmd, user.Name, user.Password)
+	user.GetUserID(DbConnection)
+	cmd := fmt.Sprintf("INSERT INTO %s (userid, name, pass, shopid) VALUES (?, ?, ?, ?);", "userlist")
+	_, err := DbConnection.Exec(cmd, user.ID, user.Name, user.Password, user.ShopID)
 	return err
 }
 
 //shopinfoDBから従業員情報削除(名前とパスの組み合わせ揃える必要あり)
 //提出前のshopshiftDBからも削除
 func (user *User) DeleteUser() error{
-	DbConnection, _ := sql.Open("sqlite3", "DB/shopinfo.sql")
+	DbConnection, _ := sql.Open("sqlite3", "DB/userlist.sql")
 	defer DbConnection.Close()
-	cmd := fmt.Sprintf("DELETE FROM %s WHERE name = ? AND pass = ?;", "shopID_"+strconv.Itoa(user.ShopID))
-	if _, err := DbConnection.Exec(cmd, user.Name, user.Password); err != nil{
+	cmd := "SELECT userid FROM userlist WHERE userid = ?;"
+	row := DbConnection.QueryRow(cmd, user.ID)
+	if err := row.Scan(user.Name); err != nil{
+		return err
+	}
+	cmd = "DELETE FROM userlist WHERE userid = ? AND name = ? AND pass = ?;"
+	if _, err := DbConnection.Exec(cmd, user.ID, user.Name, user.Password); err != nil{
 		return err
 	}
 	//削除完了したかの確認
-	cmd = fmt.Sprintf("SELECT name FROM %s WHERE name = ?;", "shopID_"+strconv.Itoa(user.ShopID))
-	row := DbConnection.QueryRow(cmd, user.Name)
+	cmd = "SELECT userid FROM userlist WHERE userid = ?;"
+	row = DbConnection.QueryRow(cmd, user.ID)
 	if err := row.Scan(user.Name); err != sql.ErrNoRows{
 		return err
 	}
-	deleteShift(user.ShopID, user.Name)	//shopshiftDBからも削除
+	deleteShift(user.ShopID)	//shopshiftDBからも削除
 	return nil
 }
 
@@ -165,19 +174,19 @@ func GetNextYearandMonth()(int, int){
 	return year, month
 }
 
-//名前とパスの組のユーザーリストをDBから返す
-func GetUsers(id int) (Users, error){
-	DbConnection, _ := sql.Open("sqlite3", "DB/shopinfo.sql")
+//ユーザーIDと名前とパスの組のユーザーリストをDBから返す
+func GetUsers(shopID int) (Users, error){
+	DbConnection, _ := sql.Open("sqlite3", "DB/userlist.sql")
 	defer DbConnection.Close()
-	cmd := fmt.Sprintf("SELECT * FROM %s;", "shopID_"+strconv.Itoa(id))
-	rows, _ := DbConnection.Query(cmd)
+	cmd := fmt.Sprintf("SELECT userid, name, pass FROM %s WHERE shopid = ?;", "userlist")
+	rows, _ := DbConnection.Query(cmd, shopID)
 	defer rows.Close()
 	var uu = Users{
 		List: []User{},
 	}
 	for rows.Next(){
 		var u = User{}
-		if err := rows.Scan(&u.Name, &u.Password); err != nil {
+		if err := rows.Scan(&u.ID, &u.Name, &u.Password); err != nil {
 			return uu, err
 		}
 		uu.List = append(uu.List, u)
@@ -188,55 +197,38 @@ func GetUsers(id int) (Users, error){
 	return uu, nil
 }
 
-//shopshiftDBに２ヶ月分のテーブル作成（シフトリスト）
-func CreateShopShift(id int) error {
-	DbConnection, _ := sql.Open("sqlite3", "DB/shopshift.sql")
-	defer DbConnection.Close()
-	year, month := GetYearandMonth()
-	text := `(name STRING, day1 INT, day2 INT, day3 INT, day4 INT, day5 INT, day6 INT, day7 INT,
-			 day8 INT, day9 INT, day10 INT, day11 INT, day12 INT, day13 INT, day14 INT,
-			 day15 INT, day16 INT, day17 INT, day18 INT, day19 INT, day20 INT, day21 INT,
-			 day22 INT, day23 INT, day24 INT, day25 INT, day26 INT, day27 INT, day28 INT`
-	//30日の月, 2月, それ以外の月で場合分けして2ヶ月分テーブル作成
-	for i := 0; i < 2; i++{
-		tablename := strconv.Itoa(id) + strconv.Itoa(year) + strconv.Itoa(month)
-		if month == 4 || month == 6 || month == 9 || month == 11 {
-			cmd := fmt.Sprintf("CREATE TABLE IF NOT EXISTS %s " + text + `day29 INT, day30 INT);`, "shopID_" + tablename)
-			if _, err := DbConnection.Exec(cmd); err != nil{
-				return err
-			}
-			month++
-	
-		} else if month == 2 {
-			//閏年の判定
-			if (year % 400 == 0 || (year % 4 == 0 && year % 100 != 0)){
-				cmd := fmt.Sprintf("CREATE TABLE IF NOT EXISTS %s " + text + ", day29 INT);", "shopID_" + tablename)
-				if _, err := DbConnection.Exec(cmd); err != nil{
-					return err
-				}
-				month++
-			} else {
-				cmd := fmt.Sprintf("REATE TABLE IF NOT EXISTS %s ` + text + `);", "shopID_" + tablename)
-				if _, err := DbConnection.Exec(cmd); err != nil{
-					return err
-				}
-				month++
-			}
 
-		} else {
-			cmd := fmt.Sprintf("CREATE TABLE IF NOT EXISTS %s " + text + ", day29 INT, day30 INT, day31 INT);", "shopID_" + tablename)
-			if _, err := DbConnection.Exec(cmd); err != nil{
-				return err
-			}
-			if(month == 12){
-				month = 1
-				year++
-			} else {
-				month++
-			}
-		}
+//shiftDB作成
+func CreateShiftDB() error {
+	DbConnection, _ := sql.Open("sqlite3", "DB/shift.sql")
+	defer DbConnection.Close()
+	text := `CREATE TABLE IF NOT EXISTS %s 
+			(shiftid INT PRIMARY KEY, userid INT, shopid INT, year INT, month INT,
+			day1 INT, day2 INT, day3 INT, day4 INT, day5 INT, day6 INT, day7 INT,
+			day8 INT, day9 INT, day10 INT, day11 INT, day12 INT, day13 INT, day14 INT,
+			day15 INT, day16 INT, day17 INT, day18 INT, day19 INT, day20 INT, day21 INT,
+			day22 INT, day23 INT, day24 INT, day25 INT, day26 INT, day27 INT, day28 INT,
+			day29 INT, day30 INT, day31 INT)`
+	cmd := fmt.Sprintf(text, "shift")
+	if _, err := DbConnection.Exec(cmd); err != nil{
+		return err
 	}
 	return nil	
+}
+
+func GetShiftID(DbConnection *sql.DB) (int, error) {
+	cmd := "SELECT shiftid FROM shift ORDER BY shiftid DESC LIMIT 1;"
+	row := DbConnection.QueryRow(cmd)
+	var dummyID int
+	var shiftID int
+	err := row.Scan(&dummyID)
+	if err == sql.ErrNoRows {
+		shiftID = 1
+	}
+	if err == nil{
+		shiftID = dummyID + 1
+	}
+	return shiftID, err
 }
 
 
@@ -253,95 +245,57 @@ type DayShift struct{
 	Day		int
 }
 
-//名前をキーにしてシフト削除
-func deleteShift(id int, name string)error{
-	DbConnection, _ := sql.Open("sqlite3", "DB/shopshift.sql")
+//userIDをキーにしてシフト削除
+func deleteShift(userID int)error{
+	DbConnection, _ := sql.Open("sqlite3", "DB/shift.sql")
 	defer DbConnection.Close()
-	year, month := GetNextYearandMonth()
-	tablename := strconv.Itoa(id) + strconv.Itoa(year) + strconv.Itoa(month)
-	cmd := fmt.Sprintf("DELETE FROM %s WHERE name = ?;", "shopID_" + tablename)
-	_, err := DbConnection.Exec(cmd, name)
+	cmd := fmt.Sprintf("DELETE FROM %s WHERE userid = ?;", "shift")
+	_, err := DbConnection.Exec(cmd, userID)
 	return err
 }
 
+
 //1ヶ月先のシフト取得
-func UserShift(id int, name string) (ShiftData, error){
-	DbConnection, _ := sql.Open("sqlite3", "DB/shopshift.sql")
+func UserShift(userID int, name string) (ShiftData, error){
+	DbConnection, _ := sql.Open("sqlite3", "DB/shift.sql")
 	defer DbConnection.Close()
-	var shift ShiftData
-	shift.Year, shift.Month = GetNextYearandMonth()
+	year, month := GetNextYearandMonth()
 
-	tablename := strconv.Itoa(id) + strconv.Itoa(shift.Year) + strconv.Itoa(shift.Month)
-	cmd := fmt.Sprintf("SELECT * FROM %s WHERE name = ?;", "shopID_" + tablename)
-	row := DbConnection.QueryRow(cmd, name)
+	cmd := "SELECT * FROM shift WHERE userid = ? AND year = ? AND month = ?;"
+	row := DbConnection.QueryRow(cmd, userID, year, month)
 
-	if shift.Month == 4 || shift.Month == 6 || shift.Month == 9 || shift.Month ==11 {
-		shift.Day = make([]DayShift, 30, 35)
-
-		err := row.Scan(&name, &shift.Day[0].Shift, &shift.Day[1].Shift, &shift.Day[2].Shift, &shift.Day[3].Shift,
-			&shift.Day[4].Shift, &shift.Day[5].Shift, &shift.Day[6].Shift, &shift.Day[7].Shift, &shift.Day[8].Shift,
-			&shift.Day[9].Shift, &shift.Day[10].Shift, &shift.Day[11].Shift, &shift.Day[12].Shift, &shift.Day[13].Shift,
-			&shift.Day[14].Shift, &shift.Day[15].Shift, &shift.Day[16].Shift, &shift.Day[17].Shift, &shift.Day[18].Shift,
-			&shift.Day[19].Shift, &shift.Day[20].Shift, &shift.Day[21].Shift, &shift.Day[22].Shift, &shift.Day[23].Shift,
-			&shift.Day[24].Shift, &shift.Day[25].Shift, &shift.Day[26].Shift, &shift.Day[27].Shift, &shift.Day[28].Shift,
-			&shift.Day[29].Shift)
-
-		for i := 1; i <= 30; i++{
+	var shift = ShiftData{}
+	shift.Day = make([]DayShift, 27, 31)
+	dummySpace := make([]int, 5, 7)
+	var dummy1, dummy2, dummy3 int
+	err := row.Scan(&dummySpace[0], &dummySpace[1], &dummySpace[2], &shift.Year, &shift.Month,
+		&shift.Day[0].Shift, &shift.Day[1].Shift, &shift.Day[2].Shift, &shift.Day[3].Shift,
+		&shift.Day[4].Shift, &shift.Day[5].Shift, &shift.Day[6].Shift, &shift.Day[7].Shift, &shift.Day[8].Shift,
+		&shift.Day[9].Shift, &shift.Day[10].Shift, &shift.Day[11].Shift, &shift.Day[12].Shift, &shift.Day[13].Shift,
+		&shift.Day[14].Shift, &shift.Day[15].Shift, &shift.Day[16].Shift, &shift.Day[17].Shift, &shift.Day[18].Shift,
+		&shift.Day[19].Shift, &shift.Day[20].Shift, &shift.Day[21].Shift, &shift.Day[22].Shift, &shift.Day[23].Shift,
+		&shift.Day[24].Shift, &shift.Day[25].Shift, &shift.Day[26].Shift, &shift.Day[27].Shift, &dummy1, &dummy2, &dummy3)
+		if err != nil {
+			return shift, err
+		}
+		for i := 1; i <= 28; i++{
 			shift.Day[i-1].Day = i
 		}
-		if err != nil{
-			return shift, err
-		} 
+		if month == 4 || month == 6 || month == 9 || month == 11 {
+			shift.Day = append(shift.Day, DayShift{Shift:dummy1, Day: 29,})
+			shift.Day = append(shift.Day, DayShift{Shift:dummy2, Day: 30,})
 
-		} else if shift.Month == 2 {
-			//閏年の判定
-			if (shift.Year % 400 == 0 || (shift.Year % 4 == 0 && shift.Year % 100 != 0)){
-				shift.Day = make([]DayShift, 29, 35)
-				err := row.Scan(&name, &shift.Day[0].Shift, &shift.Day[1].Shift, &shift.Day[2].Shift, &shift.Day[3].Shift,
-					&shift.Day[4].Shift, &shift.Day[5].Shift, &shift.Day[6].Shift, &shift.Day[7].Shift, &shift.Day[8].Shift,
-					&shift.Day[9].Shift, &shift.Day[10].Shift, &shift.Day[11].Shift, &shift.Day[12].Shift, &shift.Day[13].Shift,
-					&shift.Day[14].Shift, &shift.Day[15].Shift, &shift.Day[16].Shift, &shift.Day[17].Shift, &shift.Day[18].Shift,
-					&shift.Day[19].Shift, &shift.Day[20].Shift, &shift.Day[21].Shift, &shift.Day[22].Shift, &shift.Day[23].Shift,
-					&shift.Day[24].Shift, &shift.Day[25].Shift, &shift.Day[26].Shift, &shift.Day[27].Shift, &shift.Day[28].Shift)
-
-				for i := 1; i <= 29; i++{
-					shift.Day[i-1].Day = i
-				}
-				if err != nil{
-					return shift, err
-				} 
-			} else{
-				shift.Day = make([]DayShift, 28, 35)
-				err := row.Scan(&name, &shift.Day[0].Shift, &shift.Day[1].Shift, &shift.Day[2].Shift, &shift.Day[3].Shift,
-					&shift.Day[4].Shift, &shift.Day[5].Shift, &shift.Day[6].Shift, &shift.Day[7].Shift, &shift.Day[8].Shift,
-					&shift.Day[9].Shift, &shift.Day[10].Shift, &shift.Day[11].Shift, &shift.Day[12].Shift, &shift.Day[13].Shift,
-					&shift.Day[14].Shift, &shift.Day[15].Shift, &shift.Day[16].Shift, &shift.Day[17].Shift, &shift.Day[18].Shift,
-					&shift.Day[19].Shift, &shift.Day[20].Shift, &shift.Day[21].Shift, &shift.Day[22].Shift, &shift.Day[23].Shift,
-					&shift.Day[24].Shift, &shift.Day[25].Shift, &shift.Day[26].Shift, &shift.Day[27].Shift)
-				for i := 1; i <= 28; i++{
-					shift.Day[i-1].Day = i
-				}
-				if err != nil{
-					return shift, err
-				} 
+		} else if month == 2 {
+			if (year % 400 == 0 || (year % 4 == 0 && year % 100 != 0)){
+				shift.Day = append(shift.Day, DayShift{Shift:dummy1, Day: 29,})
 			}
 		} else {
-			shift.Day = make([]DayShift, 31, 35)
-			err := row.Scan(&name, &shift.Day[0].Shift, &shift.Day[1].Shift, &shift.Day[2].Shift, &shift.Day[3].Shift,
-				&shift.Day[4].Shift, &shift.Day[5].Shift, &shift.Day[6].Shift, &shift.Day[7].Shift, &shift.Day[8].Shift,
-				&shift.Day[9].Shift, &shift.Day[10].Shift, &shift.Day[11].Shift, &shift.Day[12].Shift, &shift.Day[13].Shift,
-				&shift.Day[14].Shift, &shift.Day[15].Shift, &shift.Day[16].Shift, &shift.Day[17].Shift, &shift.Day[18].Shift,
-				&shift.Day[19].Shift, &shift.Day[20].Shift, &shift.Day[21].Shift, &shift.Day[22].Shift, &shift.Day[23].Shift,
-				&shift.Day[24].Shift, &shift.Day[25].Shift, &shift.Day[26].Shift, &shift.Day[27].Shift, &shift.Day[28].Shift,
-				&shift.Day[29].Shift, &shift.Day[30].Shift)
-			for i := 1; i <= 31; i++{
-				shift.Day[i-1].Day = i
-			}
-			if err != nil{
-				return shift, err
-			} 
+			shift.Day = append(shift.Day, DayShift{Shift:dummy1, Day: 29,})
+			shift.Day = append(shift.Day, DayShift{Shift:dummy2, Day: 30,})
+			shift.Day = append(shift.Day, DayShift{Shift:dummy3, Day: 31,})
 		}
-		return shift, nil
+		shift.Name = name
+	return shift, nil
 }
 
 
@@ -381,20 +335,22 @@ type MonthShift struct{
 }
 
 //提出されたシフト登録
-func(ms *MonthShift) RegisterMonthShift(id int, name string) error {
-	DbConnection, _ := sql.Open("sqlite3", "DB/shopshift.sql")
+func(ms *MonthShift) RegisterMonthShift(userID int, name string, shopID int) error {
+	DbConnection, _ := sql.Open("sqlite3", "DB/shift.sql")
 	defer DbConnection.Close()
 	year, month := GetNextYearandMonth()
-	tablename := strconv.Itoa(id) + strconv.Itoa(year) + strconv.Itoa(month)
-	text := `INSERT INTO %s (name, day1, day2, day3, day4, day5, day6, day7,
+	shiftID, _ := GetShiftID(DbConnection)
+	text := `INSERT INTO %s (shiftid, userid, shopid, year, month,
+			day1, day2, day3, day4, day5, day6, day7,
 			day8, day9, day10, day11, day12, day13, day14,
 			day15, day16, day17, day18, day19, day20, day21,
 			day22, day23, day24, day25, day26, day27, day28`
-	value := " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?"
+	value := ` VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+					 ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?`
 	
 	if month == 4 || month == 6 || month == 9 || month ==11 {
-		cmd := fmt.Sprintf(text + ", day29, day30)" + value + ", ?, ?);", "shopID_" + tablename)
-		_, err := DbConnection.Exec(cmd, &name, ms.Day1, ms.Day2, ms.Day3, ms.Day4, ms.Day5, ms.Day6, ms.Day7, ms.Day8,
+		cmd := fmt.Sprintf(text + ", day29, day30)" + value + ", ?, ?);", "shift")
+		_, err := DbConnection.Exec(cmd, shiftID, userID, shopID, year, month, ms.Day1, ms.Day2, ms.Day3, ms.Day4, ms.Day5, ms.Day6, ms.Day7, ms.Day8,
 			ms.Day9, ms.Day10, ms.Day11, ms.Day12, ms.Day13, ms.Day14, ms.Day15, ms.Day16, ms.Day17, ms.Day18, ms.Day19,
 			ms.Day20, ms.Day21, ms.Day22, ms.Day23, ms.Day24, ms.Day25, ms.Day26, ms.Day27, ms.Day28, ms.Day29, ms.Day30)
 		if err != nil{
@@ -403,16 +359,17 @@ func(ms *MonthShift) RegisterMonthShift(id int, name string) error {
 	} else if month == 2 {
 		//閏年の判定
 		if (year % 400 == 0 || (year % 4 == 0 && year % 100 != 0)){
-			cmd := fmt.Sprintf(text + ", day29)"+ value + ", ?);", "shopID_" + tablename)
-			_, err := DbConnection.Exec(cmd, &name, ms.Day1, ms.Day2, ms.Day3, ms.Day4, ms.Day5, ms.Day6, ms.Day7, ms.Day8,
+			cmd := fmt.Sprintf(text + ", day29)"+ value + ", ?);", "shift")
+			_, err := DbConnection.Exec(cmd, shiftID, userID, shopID, year, month, ms.Day1, ms.Day2, ms.Day3, ms.Day4, ms.Day5, ms.Day6, ms.Day7, ms.Day8,
 				ms.Day9, ms.Day10, ms.Day11, ms.Day12, ms.Day13, ms.Day14, ms.Day15, ms.Day16, ms.Day17, ms.Day18, ms.Day19,
 				ms.Day20, ms.Day21, ms.Day22, ms.Day23, ms.Day24, ms.Day25, ms.Day26, ms.Day27, ms.Day28, ms.Day29)
 			if err != nil{
+				log.Println(err)
 				return err
 			}
 		} else {
-			cmd := fmt.Sprintf(text + ");" + value, "shopID_" + tablename)
-			_, err := DbConnection.Exec(cmd, &name, ms.Day1, ms.Day2, ms.Day3, ms.Day4, ms.Day5, ms.Day6, ms.Day7, ms.Day8,
+			cmd := fmt.Sprintf(text + ");" + value, "shift")
+			_, err := DbConnection.Exec(cmd, shiftID, userID, shopID, year, month, ms.Day1, ms.Day2, ms.Day3, ms.Day4, ms.Day5, ms.Day6, ms.Day7, ms.Day8,
 				ms.Day9, ms.Day10, ms.Day11, ms.Day12, ms.Day13, ms.Day14, ms.Day15, ms.Day16, ms.Day17, ms.Day18, ms.Day19,
 				ms.Day20, ms.Day21, ms.Day22, ms.Day23, ms.Day24, ms.Day25, ms.Day26, ms.Day27, ms.Day28)
 			if err != nil{
@@ -420,8 +377,8 @@ func(ms *MonthShift) RegisterMonthShift(id int, name string) error {
 			}
 		}
 	} else {
-		cmd := fmt.Sprintf(text + ", day29, day30, day31)" + value + ", ?, ?, ?);", "shopID_" + tablename)
-		_, err := DbConnection.Exec(cmd, &name, ms.Day1, ms.Day2, ms.Day3, ms.Day4, ms.Day5, ms.Day6, ms.Day7, ms.Day8,
+		cmd := fmt.Sprintf(text + ", day29, day30, day31)" + value + ", ?, ?, ?);", "shift")
+		_, err := DbConnection.Exec(cmd, shiftID, userID, shopID, year, month, ms.Day1, ms.Day2, ms.Day3, ms.Day4, ms.Day5, ms.Day6, ms.Day7, ms.Day8,
 			ms.Day9, ms.Day10, ms.Day11, ms.Day12, ms.Day13, ms.Day14, ms.Day15, ms.Day16, ms.Day17, ms.Day18, ms.Day19,
 			ms.Day20, ms.Day21, ms.Day22, ms.Day23, ms.Day24, ms.Day25, ms.Day26, ms.Day27, ms.Day28, ms.Day29, ms.Day30, ms.Day31)
 		if err != nil{
@@ -432,14 +389,14 @@ func(ms *MonthShift) RegisterMonthShift(id int, name string) error {
 }
 
 //来月のシフト提出有無確認(提出されていればtrue, 提出されていなければfalse)
-func ConfirmShift(id int, name string) bool{
-	DbConnection, _ := sql.Open("sqlite3", "DB/shopshift.sql")
+func ConfirmShift(userID int, name string) bool{
+	DbConnection, _ := sql.Open("sqlite3", "DB/shift.sql")
 	defer DbConnection.Close()
 	year, month := GetNextYearandMonth()
-	tablename := strconv.Itoa(id) + strconv.Itoa(year) + strconv.Itoa(month)
-	cmd := fmt.Sprintf("SELECT name FROM %s WHERE name = ?;", "shopID_" + tablename)
-	row := DbConnection.QueryRow(cmd, name)
-	if 	err := row.Scan(&name); err != nil{
+	cmd := fmt.Sprintf("SELECT shiftid FROM %s WHERE userid = ? AND year = ? AND month = ?;", "shift")
+	row := DbConnection.QueryRow(cmd, userID, year, month)
+	var shiftID int
+	if 	err := row.Scan(&shiftID); err != nil{
 		log.Println(err)
 		return false
 	}
@@ -447,137 +404,83 @@ func ConfirmShift(id int, name string) bool{
 }
 
 //提出されたシフトアップデート(削除して挿入)
-func(ms *MonthShift) UpdateMonthShift(id int, name string) error{
-	DbConnection, _ := sql.Open("sqlite3", "DB/shopshift.sql")
+func(ms *MonthShift) UpdateMonthShift(userID int, name string, shopID int) error{
+	DbConnection, _ := sql.Open("sqlite3", "DB/shift.sql")
 	defer DbConnection.Close()
 	year, month := GetNextYearandMonth()
-	tablename := strconv.Itoa(id) + strconv.Itoa(year) + strconv.Itoa(month)
-	cmd := fmt.Sprintf("DELETE FROM %s WHERE name = ?;", "shopID_" + tablename)
-	if _, err := DbConnection.Exec(cmd, name); err != nil{
+	cmd := fmt.Sprintf("DELETE FROM %s WHERE userid = ? AND year = ? AND month = ?;", "shift")
+	if _, err := DbConnection.Exec(cmd, userID, year, month); err != nil{
 		return err
 	}
-	if err := ms.RegisterMonthShift(id, name); err != nil{
+	if err := ms.RegisterMonthShift(userID, name, shopID); err != nil{
 		return err
 	}
 	return nil
 }
 
 
-//全被雇用者のシフトリスト構造体
-type ShiftList struct{
+//シフト構造体
+type Shift struct{
+	ShiftID		int
+	UserID		int
+	ShopID		int
+	Year		int
 	Month		int
+	Day			[]int	//シフト
+	Name		string
+}
+
+//シフトリスト構造体
+type ShiftList struct{
+	Shifts		[]Shift
 	Day			[]int
-	DataList	[]ShiftData		//人ごとのデータ
+	Month		int
 }
 
 //ユーザーの全シフト取得
-func GetShiftList(id int) (ShiftList, error){
-	DbConnection, _ := sql.Open("sqlite3", "DB/shopshift.sql")
+func GetShiftList(shopID int) (ShiftList, error){
+	DbConnection, _ := sql.Open("sqlite3", "DB/shift.sql")
 	defer DbConnection.Close()
 	year, month := GetNextYearandMonth()
 
-	tablename := strconv.Itoa(id) + strconv.Itoa(year) + strconv.Itoa(month)
-	cmd := fmt.Sprintf("SELECT * FROM %s ;", "shopID_" + tablename)
-	rows, _ := DbConnection.Query(cmd)
+	cmd := fmt.Sprintf("SELECT * FROM %s WHERE shopid = ? AND year = ? AND month = ?;", "shift")
+	rows, _ := DbConnection.Query(cmd, shopID, year, month)
 	defer rows.Close()
-	var sl = ShiftList{
-		Month:		month,
-		DataList:	[]ShiftData{},
-	}
+	var sl = ShiftList{}
+	sl.Month = month
 
-	if month == 4 || month == 6 || month == 9 || month == 11 {
-		for rows.Next(){
-			var shift ShiftData
-			shift.Day = make([]DayShift, 30, 35)
-			err := rows.Scan(&shift.Name, &shift.Day[0].Shift, &shift.Day[1].Shift, &shift.Day[2].Shift, &shift.Day[3].Shift,
-				&shift.Day[4].Shift, &shift.Day[5].Shift, &shift.Day[6].Shift, &shift.Day[7].Shift, &shift.Day[8].Shift,
-				&shift.Day[9].Shift, &shift.Day[10].Shift, &shift.Day[11].Shift, &shift.Day[12].Shift, &shift.Day[13].Shift,
-				&shift.Day[14].Shift, &shift.Day[15].Shift, &shift.Day[16].Shift, &shift.Day[17].Shift, &shift.Day[18].Shift,
-				&shift.Day[19].Shift, &shift.Day[20].Shift, &shift.Day[21].Shift, &shift.Day[22].Shift, &shift.Day[23].Shift,
-				&shift.Day[24].Shift, &shift.Day[25].Shift, &shift.Day[26].Shift, &shift.Day[27].Shift, &shift.Day[28].Shift,
-				&shift.Day[29].Shift)
-			if err != nil {
-				return sl, err
-			}
-			sl.DataList = append(sl.DataList, shift)
+	for rows.Next(){
+		var shift Shift
+		shift.Day = make([]int, 27, 31)
+		var dummy1, dummy2, dummy3 int
+		err := rows.Scan(&shift.ShiftID, &shift.UserID, &shift.ShopID, &shift.Year, &shift.Month,
+			&shift.Day[0], &shift.Day[1], &shift.Day[2], &shift.Day[3],&shift.Day[4], &shift.Day[5],
+			&shift.Day[6], &shift.Day[7], &shift.Day[8], &shift.Day[9], &shift.Day[10], &shift.Day[11],
+			&shift.Day[12], &shift.Day[13],&shift.Day[14], &shift.Day[15], &shift.Day[16], &shift.Day[17],
+			&shift.Day[18], &shift.Day[19], &shift.Day[20], &shift.Day[21], &shift.Day[22], &shift.Day[23],
+			&shift.Day[24], &shift.Day[25], &shift.Day[26], &shift.Day[27], &dummy1, &dummy2, &dummy3)
+		if err != nil {
+			return sl, err
 		}
-		if err := rows.Err(); err != nil{
-			return ShiftList{}, err
-		}
-		for i := 1; i <= 30; i++{
-			sl.Day = append(sl.Day, i)
-		}
-
+		if month == 4 || month == 6 || month == 9 || month == 11 {
+			shift.Day = append(shift.Day, dummy1)
+			shift.Day = append(shift.Day, dummy2)
 		} else if month == 2 {
-			//閏年の判定
 			if (year % 400 == 0 || (year % 4 == 0 && year % 100 != 0)){
-				for rows.Next(){
-					var shift ShiftData
-					shift.Day = make([]DayShift, 29, 35)
-					err := rows.Scan(&shift.Name, &shift.Day[0].Shift, &shift.Day[1].Shift, &shift.Day[2].Shift, &shift.Day[3].Shift,
-						&shift.Day[4].Shift, &shift.Day[5].Shift, &shift.Day[6].Shift, &shift.Day[7].Shift, &shift.Day[8].Shift,
-						&shift.Day[9].Shift, &shift.Day[10].Shift, &shift.Day[11].Shift, &shift.Day[12].Shift, &shift.Day[13].Shift,
-						&shift.Day[14].Shift, &shift.Day[15].Shift, &shift.Day[16].Shift, &shift.Day[17].Shift, &shift.Day[18].Shift,
-						&shift.Day[19].Shift, &shift.Day[20].Shift, &shift.Day[21].Shift, &shift.Day[22].Shift, &shift.Day[23].Shift,
-						&shift.Day[24].Shift, &shift.Day[25].Shift, &shift.Day[26].Shift, &shift.Day[27].Shift, &shift.Day[28].Shift)
-					if err != nil {
-						return sl, err
-					}
-					sl.DataList = append(sl.DataList, shift)
-				}
-				if err := rows.Err(); err != nil{
-					return sl, err
-				}
-				for i := 1; i <= 29; i++{
-					sl.Day = append(sl.Day, i)
-				}
-			} else{
-				for rows.Next(){
-					var shift ShiftData
-					shift.Day = make([]DayShift, 28, 35)
-					err := rows.Scan(&shift.Name, &shift.Day[0].Shift, &shift.Day[1].Shift, &shift.Day[2].Shift, &shift.Day[3].Shift,
-						&shift.Day[4].Shift, &shift.Day[5].Shift, &shift.Day[6].Shift, &shift.Day[7].Shift, &shift.Day[8].Shift,
-						&shift.Day[9].Shift, &shift.Day[10].Shift, &shift.Day[11].Shift, &shift.Day[12].Shift, &shift.Day[13].Shift,
-						&shift.Day[14].Shift, &shift.Day[15].Shift, &shift.Day[16].Shift, &shift.Day[17].Shift, &shift.Day[18].Shift,
-						&shift.Day[19].Shift, &shift.Day[20].Shift, &shift.Day[21].Shift, &shift.Day[22].Shift, &shift.Day[23].Shift,
-						&shift.Day[24].Shift, &shift.Day[25].Shift, &shift.Day[26].Shift, &shift.Day[27].Shift)
-					if err != nil {
-						return sl, err
-					}
-					for i := 1; i <= 28; i++{
-						shift.Day[i-1].Day = i
-					}
-					sl.DataList = append(sl.DataList, shift)
-				}
-				if err := rows.Err(); err != nil{
-					return sl, err
-				}
-				for i := 1; i <= 28; i++{
-					sl.Day = append(sl.Day, i)
-				}
+				shift.Day = append(shift.Day, dummy1)
 			}
 		} else {
-			for rows.Next(){
-				var shift ShiftData
-				shift.Day = make([]DayShift, 31, 35)
-				err := rows.Scan(&shift.Name, &shift.Day[0].Shift, &shift.Day[1].Shift, &shift.Day[2].Shift, &shift.Day[3].Shift,
-					&shift.Day[4].Shift, &shift.Day[5].Shift, &shift.Day[6].Shift, &shift.Day[7].Shift, &shift.Day[8].Shift,
-					&shift.Day[9].Shift, &shift.Day[10].Shift, &shift.Day[11].Shift, &shift.Day[12].Shift, &shift.Day[13].Shift,
-					&shift.Day[14].Shift, &shift.Day[15].Shift, &shift.Day[16].Shift, &shift.Day[17].Shift, &shift.Day[18].Shift,
-					&shift.Day[19].Shift, &shift.Day[20].Shift, &shift.Day[21].Shift, &shift.Day[22].Shift, &shift.Day[23].Shift,
-					&shift.Day[24].Shift, &shift.Day[25].Shift, &shift.Day[26].Shift, &shift.Day[27].Shift, &shift.Day[28].Shift,
-					&shift.Day[29].Shift, &shift.Day[30].Shift)
-				if err != nil {
-					return sl, err
-				}
-				sl.DataList = append(sl.DataList, shift)
-			}
-			if err := rows.Err(); err != nil{
-				return sl, err
-			}
-			for i := 1; i <= 31; i++{
-				sl.Day = append(sl.Day, i)
-			}
+			shift.Day = append(shift.Day, dummy1)
+			shift.Day = append(shift.Day, dummy2)
+			shift.Day = append(shift.Day, dummy3)
 		}
-		return sl, nil
+		sl.Shifts = append(sl.Shifts, shift)
+	}
+	for i := range sl.Shifts[0].Day{
+		sl.Day = append(sl.Day, i + 1)
+	}
+	if err := rows.Err(); err != nil{
+		return sl, err
+	}
+	return sl, nil
 }

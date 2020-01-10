@@ -30,16 +30,20 @@ func Signup(c echo.Context) error{
 		return c.String(http.StatusBadRequest, "Invalid name or password")
 	}
 	
-	if err := models.CreateShopListDB(); err != nil {
-		return c.String(http.StatusInternalServerError, "Failure to create shoplist Table")
+	if err := models.CreateOwnerDB(); err != nil {
+		return c.String(http.StatusInternalServerError, "Failure to create owner table")
 	}
 
 	if err := newShop.SignupShop(); err != nil {
 		return c.String(http.StatusInternalServerError, "Failure to sign up")
 	}
 
-	if err := models.CreateShopInfoDB(newShop.ID); err != nil {
-		return c.String(http.StatusInternalServerError, "Failure to create shopinfo Table")
+	if err := models.CreateUserListDB(); err != nil {
+		return c.String(http.StatusInternalServerError, "Failure to create userlist table")
+	}
+
+	if err := models.CreateShiftDB(); err != nil {
+		return c.String(http.StatusInternalServerError, "Failure to create shift table")
 	}
 	
 	newShop.Password = ""
@@ -62,33 +66,28 @@ func Login(c echo.Context) error{
 	if user.Name != name || user.Password != pass {
 		return c.String(http.StatusUnauthorized, "Invalid id, name or password")
 	}
-	c, err := CreateSessions(c, user.Position, user.ShopID, user.Name)	//セッション作成
+	c, err := CreateSessions(c, user.Position, user.ShopID, user.Name, user.ID)	//セッション作成
 	if err != nil{
 		return c.NoContent(http.StatusInternalServerError)
-	}
-
-	if err := models.CreateShopShift(user.ShopID); err != nil {
-		return c.String(http.StatusInternalServerError, "Failure to create shift table")
 	}
 	return c.Redirect(http.StatusSeeOther, "/owner")
 	}
 	
 	//従業員の場合の処理
 	if user.Position == 1{
-		name, pass, err := models.FindUser(user.ShopID, user.Name)
+		name, pass, err := models.FindUser(user.ID)
+		user.Name = name
 		if err != nil{
 			log.Println(err)	
 		}	
-		if user.Name != name || user.Password != pass {
-			return c.String(http.StatusUnauthorized, "invalid id, name or password")
+		if user.Password != pass {
+			return c.String(http.StatusUnauthorized, "Invalid id, name or password")
 		}
 	
-		c, err := CreateSessions(c, user.Position, user.ShopID, user.Name)	//セッション作成
+		c, err := CreateSessions(c, user.Position, user.ShopID, user.Name, user.ID)	//セッション作成
 		if err != nil{
 			return c.NoContent(http.StatusInternalServerError)
 		}
-	
-		models.CreateShopShift(user.ShopID)
 		return c.Redirect(http.StatusSeeOther, "/user")
 	}
 	return c.String(http.StatusBadRequest, "BadRequest")
@@ -114,30 +113,27 @@ func ShowOwnerPage(c echo.Context) error{
 
 //被雇用者を新規登録
 func RegisterUser(c echo.Context) error{
-	status, id := ConfirmOwnerAuth(c)	//session確認
+	status, shopID := ConfirmOwnerAuth(c)	//session確認
 	if status != http.StatusOK {
 		return c.String(status, "Authorization error")
 	}
 
-	u := new(models.User)	//id以外の入力されたユーザー情報をバインド
+	u := new(models.User)	//shopID, userID以外の入力されたユーザー情報をバインド
 	if err := c.Bind(u); err != nil {
 		return err
 	}
+	u.ShopID = shopID
 	if u.Name == "" || u.Password == "" {
 		return c.String(http.StatusBadRequest, "invalid name or password")
 	}
 
-	u.ShopID = id
-	if models.ConfirmName(u.ShopID, u.Name){
-		return c.String(http.StatusBadRequest, "User name has already used")
-	}
 	//ユーザー登録
-	if err := u.SignupUser(); err != nil{
+	if err := u.SignupUser(); err != nil{	//IDも入る
 		return c.String(http.StatusInternalServerError, "Failure to signup User")
 	}
 
 	monthShift := new(models.MonthShift)
-	if err := monthShift.RegisterMonthShift(u.ShopID, u.Name); err != nil{
+	if err := monthShift.RegisterMonthShift(u.ID, u.Name, u.ShopID); err != nil{
 		return c.String(http.StatusInternalServerError, "Failure to insert data") 
 	}
 	
@@ -145,12 +141,12 @@ func RegisterUser(c echo.Context) error{
 }
 
 func CreateUserList(c echo.Context) error{
-	status, id := ConfirmOwnerAuth(c)	//session確認
+	status, shopID := ConfirmOwnerAuth(c)	//session確認
 	if status != http.StatusOK{
 		return c.String(status, "Authorization error")
 	}
 
-	users, err := models.GetUsers(id)
+	users, err := models.GetUsers(shopID)
 	if err != nil{
 		log.Println(err)
 	}
@@ -158,7 +154,7 @@ func CreateUserList(c echo.Context) error{
 }
 
 func DeleteUser(c echo.Context) error{
-	status, id := ConfirmOwnerAuth(c)	//session確認
+	status, shopID := ConfirmOwnerAuth(c)	//session確認
 	if status != http.StatusOK{
 		return c.String(status, "Authorization error")
 	}
@@ -167,17 +163,17 @@ func DeleteUser(c echo.Context) error{
 	if err := c.Bind(u); err != nil {
 		return err
 	}
-	//名前もしくはパスがない場合、エラーを返す
-	if u.Name == "" || u.Password == "" {
-		return c.String(http.StatusBadRequest, "Delete failed. Confirm name and pass")
+	u.ShopID = shopID
+	//パスがないもしくはユーザーidが正しくない場合、エラーを返す
+	if u.ID == 0 || u.Name =="" || u.Password == "" {
+		return c.String(http.StatusBadRequest, "Delete failed. Confirm name, pass and user_id")
 	}
-	u.ShopID = id
 	err := u.DeleteUser()	//ユーザー情報削除
 	if err != nil{
-		return c.String(http.StatusBadRequest, "Delete failed. Confirm name and pass")
+		return c.String(http.StatusBadRequest, "Delete failed. Confirm name, pass and user_id")
 	}
 
-	users, err:= models.GetUsers(id)
+	users, err:= models.GetUsers(shopID)
 	if err != nil{
 		log.Println(err)
 	}
@@ -185,12 +181,12 @@ func DeleteUser(c echo.Context) error{
 }
 
 func CreateShiftList(c echo.Context) error{
-	status, id := ConfirmOwnerAuth(c)	//session確認
+	status, shopID := ConfirmOwnerAuth(c)	//session確認
 	if status != http.StatusOK{
 		return c.String(status, "Authorization error")
 	}
 
-	shiftlist, err := models.GetShiftList(id)
+	shiftlist, err := models.GetShiftList(shopID)
 	if err != nil{
 		return err
 	}
@@ -201,12 +197,12 @@ func CreateShiftList(c echo.Context) error{
 
 //以下は/user
 func ShowUserPage(c echo.Context) error{
-	status, id, name := ConfirmUserAuth(c)	//session確認
+	status, userID, name, _ := ConfirmUserAuth(c)	//session確認
 	if status != http.StatusOK{
 		return c.String(status, "Authorization error")
 	}
 
-	shift, err := models.UserShift(id, name)	//DBからshift取得
+	shift, err := models.UserShift(userID, name)	//DBからshift取得
 	if err != nil{
 		log.Println(err)
 	}
@@ -214,7 +210,7 @@ func ShowUserPage(c echo.Context) error{
 }
 
 func SubmitShift(c echo.Context) error{
-	status, id, name := ConfirmUserAuth(c)	//session確認
+	status, userID, name, shopID := ConfirmUserAuth(c)	//session確認
 	if status != http.StatusOK{
 		return c.String(status, "Authorization error")
 	}
@@ -223,18 +219,12 @@ func SubmitShift(c echo.Context) error{
 	if err := c.Bind(monthShift); err != nil {
 		return err
 	}
-	if models.ConfirmShift(id, name){	//シフト提出有無の確認
-		if err := monthShift.UpdateMonthShift(id, name); err != nil{	//提出されていたらアップデート
+	if models.ConfirmShift(userID, name){	//シフト提出有無の確認
+		if err := monthShift.UpdateMonthShift(userID, name, shopID); err != nil{	//提出されていたらアップデート
 			return c.String(http.StatusInternalServerError, "Incomplete update")
+		} else {
+		monthShift.RegisterMonthShift(userID, name, shopID)
 		}
-	} else {
-		monthShift.RegisterMonthShift(id, name)
 	}
-
 	return ShowUserPage(c)	//ページ整形
 }
-
-
-
-
-

@@ -11,23 +11,27 @@
       <form action="http://localhost:8080/owner/registration" method="post" enctype="application/x-www-form-urlencoded">
         <input type="radio" name="_method" value="POST" checked>従業員情報追加
         <input type="radio" name="_method" value="DELETE">従業員情報削除
-        <p>ユーザー名</p>
+        <p>従業員名</p>
         <input type="text" name="name"/>
         <p>パスワード</p>
         <input type="text" name="pass"/>
+        <p>user_id(情報削除する場合記入)</p>
+        <input type="text" name="userid"/>
         <input type="submit" value="registration"/>
       </form>
       <br>
       <h3>従業員リスト</h3>
       <table border="1" width="300">
         <tr>
+          <th>user_id</th>
           <th>従業員名</th>
           <th>パスワード</th>
         </tr>
         {{ range .List }}
         <tr>
+          <td>{{ .ID }}</td>
           <td>{{ .Name }}</td>
-          <td>{{ .Password }}</td>          
+          <td>{{ .Password }}</td>
         </tr>
         {{ end }}
       </table>

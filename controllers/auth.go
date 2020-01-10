@@ -7,8 +7,8 @@ import(
 	"net/http"
 )
 
-//セッション作成（認証、名前、店id）
-func CreateSessions(c echo.Context, position int, id int, name string) (echo.Context, error){
+//セッション作成（認証, 名前, 店id, ユーザーid）
+func CreateSessions(c echo.Context, position int, shopID int, name string, userID int) (echo.Context, error){
 	sess, _ := session.Get("session", c)
 	sess.Options = &sessions.Options{
 	  Path:     "/",
@@ -20,8 +20,10 @@ func CreateSessions(c echo.Context, position int, id int, name string) (echo.Con
 	} else {
 		sess.Values["owner_auth"] = true		
 	}
+	sess.Values["shop_id"] = shopID
 	sess.Values["user_name"] = name
-	sess.Values["shop_id"] = id
+	sess.Values["user_id"] = userID
+
 	err := sess.Save(c.Request(), c.Response())
 	return c, err
 }
@@ -32,6 +34,7 @@ func DisableSessions(c echo.Context) (echo.Context, error){
 	//ログアウト
 	sess.Values["owner_auth"] = false
 	sess.Values["user_auth"] = false
+	sess.Values["user_id"] = 0
 	sess.Values["shop_id"] = 0
 	//状態を保存
 	err := sess.Save(c.Request(), c.Response())	
@@ -51,13 +54,13 @@ func ConfirmOwnerAuth(c echo.Context) (int, int) {
 }
 
 //従業員認証確認し、http.Status(0が正常終了)＋ShopID＋Usernameを返す
-func ConfirmUserAuth(c echo.Context) (int, int, string) {
+func ConfirmUserAuth(c echo.Context) (int, int, string, int) {
 	sess, err := session.Get("session", c)
 	if err != nil {
-		return http.StatusInternalServerError, 0, ""
+		return http.StatusInternalServerError, 0, "", 0
 	}
 	if b, _ :=sess.Values["user_auth"]; b ==true {
-		return http.StatusOK , sess.Values["shop_id"].(int), sess.Values["user_name"].(string)
+		return http.StatusOK , sess.Values["user_id"].(int), sess.Values["user_name"].(string), sess.Values["shop_id"].(int)
 	}
-	return http.StatusUnauthorized , 0, ""
+	return http.StatusUnauthorized , 0, "", 0
 }
